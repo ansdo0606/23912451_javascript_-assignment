@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>LLM 챗봇</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/default.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --brand: #4ba24b;
+    }
+
+    body {
+      font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #e5ddd5;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+
+    .chat-container {
+      max-width: 640px;
+      margin: 0 auto;
+      background-color: #fff;
+      border-radius: 20px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .chat-header {
+      background-color: var(--brand);
+      color: #fff;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chat-header h1 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .chat-header p {
+      margin: 0;
+      opacity: 0.85;
+      font-size: 14px;
+    }
+
+    .chat-box {
+      padding: 24px;
+      height: 420px;
+      overflow-y: auto;
+      background-color: #f8f8f8;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      padding: 12px 16px;
+      border-radius: 18px;
+      max-width: 80%;
+      line-height: 1.6;
+      word-break: break-word;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+      animation: fadeIn 0.2s ease;
+    }
+
+    .message.user {
+      background-color: #dcf8c6;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.bot {
+      background-color: #fff;
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+
+    .message.error {
+      border: 1px solid #f86d70;
+      background-color: #fff0f0;
+      color: #c12a2f;
+    }
+
+    .input-area {
+      border-top: 1px solid #f0f0f0;
+      padding: 16px 20px;
+      background-color: #fff;
+    }
+
+    #chatForm {
+      display: flex;
+      gap: 12px;
+    }
+
+    #keywords {
+      flex: 1;
+      padding: 12px 18px;
+      border: 1px solid #d9d9d9;
+      border-radius: 999px;
+      font-size: 15px;
+      outline: none;
+      transition: border-color 0.2s ease;
+    }
+
+    #keywords:focus {
+      border-color: var(--brand);
+    }
+
+    button {
+      padding: 12px 26px;
+      background-color: var(--brand);
+      border: none;
+      border-radius: 999px;
+      color: #fff;
+      font-size: 15px;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: #3b8b3b;
+    }
+
+    .hint {
+      font-size: 13px;
+      color: #777;
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #202124;
+      color: #f5f5f5;
+      padding: 14px;
+      border-radius: 10px;
+      margin: 8px 0 0;
+      font-size: 13px;
+    }
+
+    code {
+      font-family: "Fira Code", "Menlo", Consolas, monospace;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <h1>LLM 챗봇</h1>
+      <p>자연어 질문을 입력하면 OpenAI 모델이 답변합니다.</p>
+    </div>
+
+    <div class="chat-box" id="chatBox"></div>
+
+    <div class="input-area">
+      <form id="chatForm" autocomplete="off">
+        <input type="text" id="keywords" placeholder="예) 오늘 날씨 요약해줘" required />
+        <button type="submit" id="sendBtn">보내기</button>
+      </form>
+      <p class="hint">Enter 또는 보내기 버튼으로 질문을 전송하세요.</p>
+    </div>
+  </div>
+
+  <script>
+    const chatBox = document.getElementById("chatBox");
+    const form = document.getElementById("chatForm");
+    const inputEl = document.getElementById("keywords");
+    const sendBtn = document.getElementById("sendBtn");
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      appendMessage("나", text, "user");
+      inputEl.value = "";
+      inputEl.focus();
+
+      toggleLoading(true);
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ keywords: text })
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        toggleLoading(false);
+
+        if (!res.ok || !payload.success) {
+          appendMessage("시스템", payload.error || `요청 실패 (${res.status})`, "error");
+          return;
+        }
+
+        appendMessage("챗봇", formatMessageWithCodeBlocks(payload.answer), "bot", true);
+      } catch (error) {
+        toggleLoading(false);
+        appendMessage("시스템", "서버 통신 오류가 발생했습니다.", "error");
+        console.error(error);
+      }
+    });
+
+    function appendMessage(author, text, type, isHtml = false) {
+      const msg = document.createElement("div");
+      msg.className = `message ${type}`;
+
+      if (isHtml) {
+        msg.innerHTML = `<strong>${author}</strong><br>${text}`;
+        msg.querySelectorAll("pre code").forEach((el) => hljs.highlightElement(el));
+      } else {
+        msg.innerHTML = `<strong>${author}</strong><br>${escapeHtml(text)}`;
+      }
+
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function toggleLoading(isLoading) {
+      sendBtn.disabled = isLoading;
+      sendBtn.textContent = isLoading ? "생성 중..." : "보내기";
+    }
+
+    function formatMessageWithCodeBlocks(text = "") {
+      return text
+        .replace(/```([\s\S]*?)```/g, (_, code) => `<pre><code>${escapeHtml(code)}</code></pre>`)
+        .replace(/\n/g, "<br>");
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/[&<>"']/g, (char) => ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+      }[char]));
+    }
+  </script>
+</body>
+</html>
