@@ -7,13 +7,13 @@ body {
   font-family: 'Pretendard', 'Noto Sans KR', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   background-color: #e5ddd5;
   margin: 0;
-  padding: 20px;
+  padding: 20px 150px;
   min-height: 100vh;
   box-sizing: border-box;
 }
 
 .chat-container {
-  max-width: 640px;
+  max-width: 100%;
   margin: 0 auto;
   background-color: #fff;
   border-radius: 20px;
